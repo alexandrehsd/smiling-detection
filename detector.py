@@ -7,12 +7,16 @@
 '''
 
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, MaxPool2D, Flatten, Dense, Dropout, Input
+from keras.models import Sequential
+from keras.layers import Input, Conv2D, MaxPool2D, Flatten, Dense, Dropout
+from keras.optimizers import SGD, Adam
+from keras import regularizers
 import glob
 
 DATASET_SIZE = 1203
 BATCH_SIZE = 8
 TRAIN_SIZE = 960
+NUM_CLASSES = 2
 
 filenames_list = []
 labels_list = []
@@ -45,6 +49,7 @@ filenames = tf.constant(filenames_list)
 
 # 'labels[i]' is the label for the image in `filenames[i].
 labels = tf.constant(labels_list)
+labels = tf.one_hot(tf.cast(labels, tf.int32), NUM_CLASSES)
 
 def create_and_shuffle_dataset(filenames, labels):
     # Generating tf.data.Dataset object and shuffling it
@@ -63,10 +68,58 @@ def preparing_for_training(dataset):
     train_data = train_data.repeat()
 
     test_data = dataset.skip(TRAIN_SIZE)
+    test_data = test_data.batch(batch_size=BATCH_SIZE)
+    test_data = test_data.repeat()
 
     return train_data, test_data
 
 dataset = create_and_shuffle_dataset(filenames,labels)
 train_data, test_data = preparing_for_training(dataset)
 
+# --------- MODEL -------------
+model = Sequential()
 
+# Convolutional Layer 1
+model.add(Conv2D(input_shape=(64,64,3), filters=64, kernel_size=[5,5], \
+            padding='same', activation='relu', use_bias=True))
+
+# Pooling Layer 1
+model.add(MaxPool2D(pool_size=(2,2), strides=2))
+
+# Convolutional Layer 2
+model.add(Conv2D(filters=64, kernel_size=[3,3], \
+                activation='relu'))
+
+# Pooling Layer 2
+model.add(MaxPool2D(pool_size=(2,2), strides=2))
+
+# Flattening
+model.add(Flatten())
+
+# Dense Layer 1
+model.add(Dense(1024, activation='relu'))
+
+# Dropping out with a probability of 'rate'
+model.add(Dropout(rate=0.5))
+
+# output Layer
+model.add(Dense(NUM_CLASSES, activation='softmax'))
+
+# -------- MODEL PARAMETERS ---------
+
+# Instantiating an ADAM Optimizer
+adam = Adam(lr=0.001, beta_1=0.9, beta_2=0.999)
+
+model.compile(loss='binary_crossentropy', optimizer=adam, \
+            metrics=['accuracy'])
+
+H = model.fit(
+    train_data,
+    steps_per_epoch=40,
+    batch_size=120,
+    epochs=10,
+    validation_data=test_data,
+    validation_steps=3,
+)
+
+print(H.history)
