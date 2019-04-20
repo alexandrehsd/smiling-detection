@@ -7,10 +7,11 @@
 '''
 
 import tensorflow as tf
-from keras.models import Sequential
-from keras.layers import Input, Conv2D, MaxPool2D, Flatten, Dense, Dropout
-from keras.optimizers import SGD, Adam
-from keras import regularizers
+from tensorflow.keras import layers, Model, metrics
+# from keras.models import Sequential
+# from keras.layers import Input, Conv2D, MaxPool2D, Flatten, Dense, Dropout
+# from keras.optimizers import SGD, Adam
+# from keras import regularizers
 import glob
 
 DATASET_SIZE = 1203
@@ -77,49 +78,50 @@ dataset = create_and_shuffle_dataset(filenames,labels)
 train_data, test_data = preparing_for_training(dataset)
 
 # --------- MODEL -------------
-model = Sequential()
+
+# Inputs
+inputs = tf.keras.Input(shape=(64,64,3))
 
 # Convolutional Layer 1
-model.add(Conv2D(input_shape=(64,64,3), filters=64, kernel_size=[5,5], \
-            padding='same', activation='relu', use_bias=True))
+conv1 = layers.Conv2D(filters=32, kernel_size=[5,5], padding='same', activation='relu')(inputs)
 
 # Pooling Layer 1
-model.add(MaxPool2D(pool_size=(2,2), strides=2))
+pool1 = layers.MaxPool2D(pool_size=(2,2), strides=2)(conv1)
 
 # Convolutional Layer 2
-model.add(Conv2D(filters=64, kernel_size=[3,3], \
-                activation='relu'))
+conv2 = layers.Conv2D(filters=64, kernel_size=[3,3], activation=tf.nn.relu)(pool1)
 
 # Pooling Layer 2
-model.add(MaxPool2D(pool_size=(2,2), strides=2))
+pool2 = layers.MaxPool2D(pool_size=(2,2), strides=2)(conv2)
 
 # Flattening
-model.add(Flatten())
+pool2_flat = layers.Flatten()(pool2)
 
 # Dense Layer 1
-model.add(Dense(1024, activation='relu'))
+dense1 = layers.Dense(512, activation=tf.nn.relu)(pool2_flat)
 
 # Dropping out with a probability of 'rate'
-model.add(Dropout(rate=0.5))
+dropped = layers.Dropout(rate=0.4)(dense1)
 
 # output Layer
-model.add(Dense(NUM_CLASSES, activation='softmax'))
+predictions = layers.Dense(NUM_CLASSES, activation=tf.nn.softmax)(dropped)
+
+model = Model(inputs=inputs, outputs=predictions)
 
 # -------- MODEL PARAMETERS ---------
 
 # Instantiating an ADAM Optimizer
-adam = Adam(lr=0.001, beta_1=0.9, beta_2=0.999)
+# sgd = tf.train.GradientDescentOptimizer(learning_rate=0.1)
+adam = tf.train.AdamOptimizer(learning_rate=0.1, beta1=0.9, beta2=0.999)
 
-model.compile(loss='binary_crossentropy', optimizer=adam, \
-            metrics=['accuracy'])
+model.compile(loss=metrics.binary_crossentropy, optimizer=adam, metrics=[metrics.categorical_accuracy])
 
 H = model.fit(
-    train_data,
-    steps_per_epoch=40,
-    batch_size=120,
-    epochs=10,
+    dataset, 
+    epochs=8,
+    steps_per_epoch=120,
     validation_data=test_data,
-    validation_steps=3,
+    validation_steps = 40
 )
 
-print(H.history)
+# print(H.history)
