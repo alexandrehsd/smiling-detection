@@ -3,7 +3,7 @@
     input format so that will be possible to build a classification
     model with tensorflow.
 
-    After adequation, a model is builted using the keras API.
+    After adequation, a model is built using the keras API.
 '''
 
 import tensorflow as tf
@@ -14,7 +14,12 @@ from random import shuffle
 DATASET_SIZE = 1203
 BATCH_SIZE = 16
 TRAIN_SIZE = 960
+NUM_EPOCHS = 16
 NUM_CLASSES = 2
+
+# --------------------------------------------------------------------
+#           ADEQUATING THE DATASET TO TENSORFLOW OBJECTS
+# --------------------------------------------------------------------
 
 filenames_list = []
 labels_list = []
@@ -25,16 +30,23 @@ shuffle(filenames_list)
 # last image of the non-smile list
 divisor = './lfwcrop_color/labeled_faces/Jacques_Chirac_0001.jpg'
 
-count = 1
-
 #  Mounting the filenames and the labels list
 for i in range(len(filenames_list)):
     if filenames_list[i] > divisor:
         labels_list.append(1)
     else:
         labels_list.append(0)
-    
-    count += 1
+
+# A vector of filenames.
+filenames = tf.constant(filenames_list)
+
+# 'labels[i]' is the label for the image in 'filenames[i]'.
+labels = tf.constant(labels_list)
+labels = tf.one_hot(tf.cast(labels, tf.int32), NUM_CLASSES)
+
+# --------------------------------------------------------------------
+#           PREPROCESSING THE DATA AND CREATING A DATASET
+# --------------------------------------------------------------------
 
 # Reads an image from a file, decodes it into a dense tensor, and resizes it
 # to a fixed shape.
@@ -44,13 +56,6 @@ def _parse_function(filename, label):
   image_resized = tf.image.resize_images(image_decoded, [64, 64])
   std_image = tf.image.per_image_standardization(image_resized)
   return std_image, label
-
-# A vector of filenames.
-filenames = tf.constant(filenames_list)
-
-# 'labels[i]' is the label for the image in 'filenames[i]'.
-labels = tf.constant(labels_list)
-labels = tf.one_hot(tf.cast(labels, tf.int32), NUM_CLASSES)
 
 def create_dataset(filenames, labels):
     # Generating tf.data.Dataset object and shuffling it
@@ -75,7 +80,9 @@ def train_test_split(dataset):
 dataset = create_dataset(filenames,labels)
 train_data, test_data = train_test_split(dataset)
 
-# --------- MODEL -------------
+# --------------------------------------------------------------------
+#                       BUILDING THE MODEL
+# --------------------------------------------------------------------
 
 # Inputs
 inputs = tf.keras.Input(shape=(64,64,3))
@@ -110,22 +117,47 @@ dropped = layers.Dropout(rate=0.5)(dense1)
 # output Layer
 predictions = layers.Dense(NUM_CLASSES, activation=tf.nn.softmax)(dropped)
 
+# Instantiating a tensorflow Model object
 model = Model(inputs=inputs, outputs=predictions)
 
-# -------- MODEL PARAMETERS ---------
-
-# Instantiating an ADAM Optimizer
+# ADAM Optimizer
 adam = tf.train.AdamOptimizer(learning_rate=0.001)
 
 model.compile(loss=metrics.binary_crossentropy, optimizer=adam, metrics=[metrics.categorical_accuracy])
 model.summary()
 
+# --------------------------------------------------------------------
+#                       FITTING THE MODEL
+# --------------------------------------------------------------------
+
 H = model.fit(
     train_data, 
-    epochs=12,
+    epochs=NUM_EPOCHS,
     steps_per_epoch=60,
     validation_data=test_data,
     validation_steps=15
 )
 
-print(H.history)
+# print(H.history)
+
+# --------------------------------------------------------------------
+#                       EVALUATING THE MODEL
+# --------------------------------------------------------------------
+
+files_ls = []
+files_ls = glob.glob("./lfwcrop_color/evaluation_faces/not_smiling/*.jpg")
+
+label_ls = [0,0,0,0,0,0,0,0,0]
+
+# A vector of filenames.
+samples = tf.constant(files_ls)
+
+# 'labels[i]' is the label for the image in 'filenames[i]'.
+label = tf.constant(label_ls)
+label = tf.one_hot(tf.cast(label, tf.int32), NUM_CLASSES)
+
+eval_data = create_dataset(samples, label)
+eval_data = eval_data.batch(batch_size=BATCH_SIZE)
+
+result = model.predict(eval_data, steps=1)
+print(result)
