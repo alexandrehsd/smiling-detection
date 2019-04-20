@@ -8,32 +8,31 @@
 
 import tensorflow as tf
 from tensorflow.keras import layers, Model, metrics
-# from keras.models import Sequential
-# from keras.layers import Input, Conv2D, MaxPool2D, Flatten, Dense, Dropout
-# from keras.optimizers import SGD, Adam
-# from keras import regularizers
 import glob
+from random import shuffle
 
 DATASET_SIZE = 1203
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 TRAIN_SIZE = 960
 NUM_CLASSES = 2
 
 filenames_list = []
 labels_list = []
 
+filenames_list = glob.glob("./lfwcrop_color/labeled_faces/*.jpg")
+shuffle(filenames_list)
+
+# last image of the non-smile list
+divisor = './lfwcrop_color/labeled_faces/Jacques_Chirac_0001.jpg'
+
 count = 1
 
-# glob returns an unsorted list so that we need to sort list
-sorted_names = sorted(glob.glob("./lfwcrop_color/labeled_faces/*.jpg"))
-
 #  Mounting the filenames and the labels list
-for file in sorted_names:
-    filenames_list.append(file)
-    if count <= 603: # the first 603 does not have a smile
-        labels_list.append(0)
-    else:
+for i in range(len(filenames_list)):
+    if filenames_list[i] > divisor:
         labels_list.append(1)
+    else:
+        labels_list.append(0)
     
     count += 1
 
@@ -43,25 +42,24 @@ def _parse_function(filename, label):
   image_string = tf.read_file(filename)
   image_decoded = tf.image.decode_jpeg(image_string, channels=3)
   image_resized = tf.image.resize_images(image_decoded, [64, 64])
-  return image_resized, label
+  std_image = tf.image.per_image_standardization(image_resized)
+  return std_image, label
 
 # A vector of filenames.
 filenames = tf.constant(filenames_list)
 
-# 'labels[i]' is the label for the image in `filenames[i].
+# 'labels[i]' is the label for the image in 'filenames[i]'.
 labels = tf.constant(labels_list)
 labels = tf.one_hot(tf.cast(labels, tf.int32), NUM_CLASSES)
 
-def create_and_shuffle_dataset(filenames, labels):
+def create_dataset(filenames, labels):
     # Generating tf.data.Dataset object and shuffling it
-    non_shuffled_dataset = tf.data.Dataset.from_tensor_slices((filenames, labels))
-    non_shuffled_dataset = non_shuffled_dataset.map(_parse_function)
-    
-    dataset = non_shuffled_dataset.shuffle(buffer_size=DATASET_SIZE)
+    dataset = tf.data.Dataset.from_tensor_slices((filenames, labels))
+    dataset = dataset.map(_parse_function)
 
     return dataset
 
-def preparing_for_training(dataset):
+def train_test_split(dataset):
     # defining batch size and 'count' number of epochs
     # taking ~ 80% for training and ~ 20% for testing
     train_data = dataset.take(TRAIN_SIZE) 
@@ -74,8 +72,8 @@ def preparing_for_training(dataset):
 
     return train_data, test_data
 
-dataset = create_and_shuffle_dataset(filenames,labels)
-train_data, test_data = preparing_for_training(dataset)
+dataset = create_dataset(filenames,labels)
+train_data, test_data = train_test_split(dataset)
 
 # --------- MODEL -------------
 
@@ -83,7 +81,7 @@ train_data, test_data = preparing_for_training(dataset)
 inputs = tf.keras.Input(shape=(64,64,3))
 
 # Convolutional Layer 1
-conv1 = layers.Conv2D(filters=32, kernel_size=[5,5], padding='same', activation='relu')(inputs)
+conv1 = layers.Conv2D(filters=32, kernel_size=[3,3], padding='same', activation=tf.nn.relu)(inputs)
 
 # Pooling Layer 1
 pool1 = layers.MaxPool2D(pool_size=(2,2), strides=2)(conv1)
@@ -94,14 +92,20 @@ conv2 = layers.Conv2D(filters=64, kernel_size=[3,3], activation=tf.nn.relu)(pool
 # Pooling Layer 2
 pool2 = layers.MaxPool2D(pool_size=(2,2), strides=2)(conv2)
 
+# Convolutional Layer 2
+conv3 = layers.Conv2D(filters=128, kernel_size=[3,3], activation=tf.nn.relu)(pool2)
+
+# Pooling Layer 2
+pool3 = layers.MaxPool2D(pool_size=(2,2), strides=2)(conv3)
+
 # Flattening
-pool2_flat = layers.Flatten()(pool2)
+pool3_flat = layers.Flatten()(pool3)
 
 # Dense Layer 1
-dense1 = layers.Dense(512, activation=tf.nn.relu)(pool2_flat)
+dense1 = layers.Dense(512, activation=tf.nn.relu)(pool3_flat)
 
 # Dropping out with a probability of 'rate'
-dropped = layers.Dropout(rate=0.4)(dense1)
+dropped = layers.Dropout(rate=0.5)(dense1)
 
 # output Layer
 predictions = layers.Dense(NUM_CLASSES, activation=tf.nn.softmax)(dropped)
@@ -111,17 +115,17 @@ model = Model(inputs=inputs, outputs=predictions)
 # -------- MODEL PARAMETERS ---------
 
 # Instantiating an ADAM Optimizer
-# sgd = tf.train.GradientDescentOptimizer(learning_rate=0.1)
-adam = tf.train.AdamOptimizer(learning_rate=0.1, beta1=0.9, beta2=0.999)
+adam = tf.train.AdamOptimizer(learning_rate=0.001)
 
 model.compile(loss=metrics.binary_crossentropy, optimizer=adam, metrics=[metrics.categorical_accuracy])
+model.summary()
 
 H = model.fit(
-    dataset, 
-    epochs=8,
-    steps_per_epoch=120,
+    train_data, 
+    epochs=12,
+    steps_per_epoch=60,
     validation_data=test_data,
-    validation_steps = 40
+    validation_steps=15
 )
 
-# print(H.history)
+print(H.history)
