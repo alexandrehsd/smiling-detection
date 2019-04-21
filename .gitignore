@@ -1,6 +1,5 @@
 *.ipynb_checkpoints
+./lfwcrop_color/faces/*.jpg
 *.vscode
 *.pyc
 *.ppm
-*.jpg
-*.png
