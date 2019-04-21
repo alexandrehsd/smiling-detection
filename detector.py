@@ -1,5 +1,5 @@
 '''
-    This script is designed to adequate the dataset to the tensorflow
+    This section is designed to adequate the dataset to the tensorflow
     input format so that will be possible to build a classification
     model with tensorflow.
 
@@ -7,14 +7,15 @@
 '''
 
 import tensorflow as tf
-from tensorflow.keras import layers, Model, metrics
 import glob
+import pickle
+from tensorflow.keras import layers, Model, metrics, regularizers, optimizers
 from random import shuffle
 
 DATASET_SIZE = 1203
 BATCH_SIZE = 16
 TRAIN_SIZE = 960
-NUM_EPOCHS = 16
+NUM_EPOCHS = 10
 NUM_CLASSES = 2
 
 # --------------------------------------------------------------------
@@ -51,11 +52,11 @@ labels = tf.one_hot(tf.cast(labels, tf.int32), NUM_CLASSES)
 # Reads an image from a file, decodes it into a dense tensor, and resizes it
 # to a fixed shape.
 def _parse_function(filename, label):
-  image_string = tf.read_file(filename)
-  image_decoded = tf.image.decode_jpeg(image_string, channels=3)
-  image_resized = tf.image.resize_images(image_decoded, [64, 64])
-  std_image = tf.image.per_image_standardization(image_resized)
-  return std_image, label
+    image_string = tf.read_file(filename)
+    image_decoded = tf.image.decode_jpeg(image_string, channels=3)
+    image_resized = tf.image.resize_images(image_decoded, [64, 64])
+    std_image = tf.image.per_image_standardization(image_resized)
+    return std_image, label
 
 def create_dataset(filenames, labels):
     # Generating tf.data.Dataset object and shuffling it
@@ -109,19 +110,21 @@ pool3 = layers.MaxPool2D(pool_size=(2,2), strides=2)(conv3)
 pool3_flat = layers.Flatten()(pool3)
 
 # Dense Layer 1
-dense1 = layers.Dense(512, activation=tf.nn.relu)(pool3_flat)
+dense1 = layers.Dense(512, activation=tf.nn.relu,
+                    kernel_regularizer=regularizers.l2(0.0012))(pool3_flat)
 
 # Dropping out with a probability of 'rate'
 dropped = layers.Dropout(rate=0.5)(dense1)
 
 # output Layer
-predictions = layers.Dense(NUM_CLASSES, activation=tf.nn.softmax)(dropped)
+predictions = layers.Dense(NUM_CLASSES, activation=tf.nn.softmax,
+                    kernel_regularizer=regularizers.l2(0.0012))(dropped)
 
 # Instantiating a tensorflow Model object
 model = Model(inputs=inputs, outputs=predictions)
 
 # ADAM Optimizer
-adam = tf.train.AdamOptimizer(learning_rate=0.001)
+adam = optimizers.Adam(lr=0.001)
 
 model.compile(loss=metrics.binary_crossentropy, optimizer=adam, metrics=[metrics.categorical_accuracy])
 model.summary()
@@ -138,26 +141,7 @@ H = model.fit(
     validation_steps=15
 )
 
-# print(H.history)
+# Pickling the model
 
-# --------------------------------------------------------------------
-#                       EVALUATING THE MODEL
-# --------------------------------------------------------------------
-
-files_ls = []
-files_ls = glob.glob("./lfwcrop_color/evaluation_faces/not_smiling/*.jpg")
-
-label_ls = [0,0,0,0,0,0,0,0,0]
-
-# A vector of filenames.
-samples = tf.constant(files_ls)
-
-# 'labels[i]' is the label for the image in 'filenames[i]'.
-label = tf.constant(label_ls)
-label = tf.one_hot(tf.cast(label, tf.int32), NUM_CLASSES)
-
-eval_data = create_dataset(samples, label)
-eval_data = eval_data.batch(batch_size=BATCH_SIZE)
-
-result = model.predict(eval_data, steps=1)
-print(result)
+# from tensorflow.keras import models
+# models.save_model(model,'model')
