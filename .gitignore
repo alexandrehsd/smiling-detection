@@ -1,4 +1,6 @@
+*.ipynb_checkpoints
 *.vscode
+*.pyc
 *.ppm
 *.jpg
-*.ipynb_checkpoints
+*.png
